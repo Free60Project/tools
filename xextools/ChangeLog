@@ -1,0 +1,5 @@
+2005-12-04	superjedi <ziga@phear.org>
+
+	* New release, version 0.2
+	
+	* All the functions have been splitted in a new library, libxex
