@@ -1,0 +1,7 @@
+2005-12-13	superjedi <ziga@phear.org>
+	* Fixed a bug in pirs_get_titles () and pirs_get_descriptions ()
+
+2005-12-11      superjedi <ziga@phear.org>
+
+        * First release, version 0.1
+        * All the functions have been splitted in a library, libpirs

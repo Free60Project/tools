@@ -1,0 +1,7 @@
+Licensed under the GPL.
+
+SHAHunt loads a set of (presumed) SHA-1 hashes from a file, and then iterates over the file trying to match plaintext chunks to one of the loaded hashes.  You can specify a lot of configuration in order to increase compatability with a variety of file types, such as file offsets to load the hashes, and offsets to start the iteration.  Run the program without any arguments to see some usage information.
+     
+Requires libxbox from xbox-linux CVS.
+     
+All settings are stored in a settings_t struct, so it would be easy to add support to save state on a break signal and the be able to load the settings back from a file.  If a serious need arised the program could also be converted to a distributed client/server model to distribute the load.  Email me if you have a need for this and we can work something out.
