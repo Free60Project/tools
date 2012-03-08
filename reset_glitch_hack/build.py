@@ -1,4 +1,5 @@
 # modified by GliGli and Tiros for the reset glitch hack
+# Xenon Support released by Xecuter, Xenon SMC was provided by RF1911
 
 # you might need to fill in this
 secret_1BL = ""
@@ -374,14 +375,16 @@ print " * checking required versions...",
 assert CD_plain, "you need a decrypted CD"
 print "ok"
 
-xenon_builds = []
+xenon1_builds = [1923]
+xenon2_builds = [7375]
 zephyr_builds = [4578]
 falcon_builds = [5771]
 jasper_builds = [6750]
 trinity_builds = [9188]
 
 print " * this image will be valid *only* for:",
-if build(CB_A) in xenon_builds: print "xenon",
+if build(CB_A) in xenon1_builds: print "xenon",
+if build(CB_A) in xenon2_builds: print "xenon",
 if build(CB_A) in zephyr_builds: print "zephyr",
 if build(CB_A) in falcon_builds: print "falcon",
 if build(CB_A) in jasper_builds: print "jasper",
@@ -472,7 +475,7 @@ add_to_flash(Xell[0:256*1024], "Xell (backup)")
 add_to_flash(Xell[256*1024:], "Xell (main)")
 
 print " * Encoding ECC..."
-
+open("output/image_no.ecc", "wb").write(Final)
 Final = addecc(Final)
 
 open("output/image_00000000.ecc", "wb").write(Final)
