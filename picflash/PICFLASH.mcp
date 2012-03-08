@@ -8,7 +8,7 @@ dir_src=
 dir_bin=
 dir_tmp=
 dir_sin=
-dir_inc=
+dir_inc=C:\MCC18\h
 dir_lib=C:\MCC18\lib
 dir_lkr=
 [CAT_FILTERS]

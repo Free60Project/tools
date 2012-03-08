@@ -2,6 +2,8 @@
 #include "Compiler.h"
 #include "XSPI.h"
 
+BYTE eraseCycle = 0x00;
+
 BOOL XNANDWaitReady(WORD timeout)
 {
 	do {
@@ -58,6 +60,18 @@ WORD XNANDErase(DWORD block)
 {
 	WORD res;
 	BYTE tmp[4];
+// when block bitwises anded with 7 is anything but 0 don't erase the block.	
+	if(eraseCycle != 0)
+	{
+		res = (block & (eraseCycle));
+//		if(!(block && eraseCycle)) // test to see if erase block level reached
+		if(res != 0)
+		{
+//			 XNANDClearStatus();
+//			 return XNANDGetStatus();
+			return 0x200; // this may well screw things up
+		}
+	}
 
 	XNANDClearStatus();
 
@@ -65,7 +79,7 @@ WORD XNANDErase(DWORD block)
 	tmp[0] |= 0x08;
 	XSPIWrite(0, tmp);
 
-	XSPIWriteDWORD(0x0C, block << 9);
+	XSPIWriteDWORD(0x0C, block << 14);
 
 	if (!XNANDWaitReady(0x1000))
 		return 0x8001;

@@ -6,6 +6,7 @@
 #include "XNAND.h"
 #include "XSPI.h"
 
+#define VERSION_RETURN                1
 #define FLASH_TX_READY                0
 #define FLASH_TX_BUSY                 1
 #define FLASH_TX_COMPLETING           2
@@ -32,6 +33,7 @@ BYTE gNextCommand     = 0xFF;
 BYTE gCurrentCommand  = 0xFF;
 BYTE gCommandProgress = 0x00;
 WORD gGlobalStatus    = 0x00;
+extern BYTE eraseCycle;
 
 WORD FlashTxLen;
 BYTE FlashTxState = FLASH_TX_READY;
@@ -42,6 +44,7 @@ USB_HANDLE FlashDataInHandle;
 
 static void FlashDataStatus(void);
 static void FlashDataInit(void);
+static void FlashDataVer(void);
 static void PowerUp(void);
 static void Shutdown(void);
 static void Update(void);
@@ -78,6 +81,7 @@ void FlashCheckVendorReq(void)
 		case 0x04:
 		case 0x05:
         case 0x06:
+		case 0x08:
 		case 0x10:
 		case 0x11:
 		case 0xF0:
@@ -144,12 +148,27 @@ void FlashPollProc(void)
 		case 0x04: FlashDataDeInit(); break;
 		case 0x05: FlashDataStatus(); break;
 		case 0x06: FlashDataErase(); break;
+		case 0x08: FlashDataVer(); break;
 
 		case 0x10: PowerUp(); break;
 		case 0x11: Shutdown(); break;
 		case 0xF0: Update(); break;
 	}
 
+}
+
+void FlashSendVerCB(BYTE *buffer, BYTE len)
+{
+	memset(buffer, 0, len);
+
+	buffer[0] = VERSION_RETURN;
+//	buffer[1] = 1;
+}
+
+void FlashDataVer()
+{
+	FlashTxSetCBF(FlashSendVerCB, 4);
+	gCurrentCommand = 0xFF;
 }
 
 void PowerUp() 
@@ -193,9 +212,17 @@ void FlashReadZeroCB(BYTE *buffer, BYTE len)
 	memset(buffer, 0, len);
 }
 
+//Jasper (256MB) FlashConfig: 008A3020
+//Jasper (512MB) FlashConfig: 00AA3020
+//Jasper (16MB)  FlashConfig: 00023010
+//preJas (16MB)  FlashConfig: 01198010
 void FlashReadConfigCB(BYTE *buffer, BYTE len)
 {
 	memcpy(buffer, FlashConfigBuffer, len);
+	if((buffer[1] == 0x8A) || (buffer[1] == 0xAA) || (buffer[2] == 0x8A) || (buffer[2] == 0xAA)) // to be safe without testing
+		eraseCycle = 7;
+	else
+		eraseCycle = 0;
 }
 
 void FlashDataStatus()
@@ -212,7 +239,7 @@ void FlashDataDeInit()
 
 void FlashDataErase()
 {
-	gGlobalStatus = XNANDErase(gCmdArgA << 5);
+	gGlobalStatus = XNANDErase(gCmdArgA);
 	
 	FlashTxSetCBF(FlashReadZeroCB, 4);
 	gCurrentCommand = 0xFF;
@@ -261,13 +288,13 @@ void FlashDataRead()
 	gCurrentCommand = 0xFF;
 }
 
-void FlashDataWrite()
+void FlashDataWrite()  //eraseCycle eraseCurr - to handle big block NAND, only erase once per 8 blocks
 {
 	BYTE *pData = (BYTE *) &FlashRxBuffer;
 	BYTE len;
 
 	if (gCommandProgress==0) {
-		gGlobalStatus = XNANDErase(gCmdArgA << 5);
+		gGlobalStatus = XNANDErase(gCmdArgA);
 		gNextBlock = gCmdArgA << 5;
 		gWordsLeft = 0x84;
 		gBytesWritten = 0;
