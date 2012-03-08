@@ -259,33 +259,21 @@ def patch_CB(CB):
 	return CB
 
 # SMC_patches is an array of patchsets, a patchset is a crc32 of the image minus first 4 bytes, human readable version info and an array of patches, a patch is: [offset,byte0,byte1,...]
+# Dynamic SMC patching by [cOz]
 
-SMC_patches = [[0xf9c96639,"Trinity, version 3.1",[[0x13b3,0x00,0x00]]],
-               [0x5b3aed00,"Jasper, version 2.3",[[0x12ba,0x00,0x00]]],
-               [0x9ad5b7ee,"Zephyr, version 1.10",[[0x1257,0x00,0x00]]],
-               [0x7e5bc217,"Zephyr, version 1.13",[[0x12a3,0x00,0x00]]],
-               [0x1d0c613e,"Falcon, version 1.6",[[0x12a3,0x00,0x00]]]]
+console_types = ["none/unk","Xenon","Zephyr","Falcon","Jasper","Trinity","Corona","Winchester"]
 
 def patch_SMC(SMC):
 	found = False
-
-	smc_crc = binascii.crc32(SMC[4:]) & 0xffffffff
-
-	print "CRC32: %x" % (smc_crc)
-
-	for versions in SMC_patches:
-		if smc_crc == versions[0]:
-			print "patchset \"%s\" matches, %d patch(es)" % (versions[1],len(versions[2]))
-			found  = True
-			for patches in versions[2]:
-			    for i in range(len(patches)-1):
-					SMC = SMC[:patches[0]+i] + chr(patches[i+1]) + SMC[patches[0]+i+1:]
-
+	smctyp = (ord(SMC[0x100])>>4)&0xF;
+	for bytes in range((len(SMC)-8)):
+		if ord(SMC[bytes]) == 0x05:
+			if ((ord(SMC[bytes+2]))==0xE5) and ((ord(SMC[bytes+4]))==0xb4) and ((ord(SMC[bytes+5]))==0x05):
+				found = True
+				print "Patching %s version %d.%d SMC at offset 0x%x" % (console_types[smctyp], ord(SMC[0x101]), ord(SMC[0x102]), bytes)
+				SMC = SMC[:bytes] + chr(0x0) + chr(0x0) + SMC[bytes+2:]
 	if not found:
-		print" ! Warning: can't patch that SMC, here are the current supported versions:"
-		for versions in SMC_patches:
-			print "  - %s" % versions[1]
-
+		print " ! Warning: can't patch this %s type SMC!" % (console_types[smctyp])
 	return SMC
 
 
