@@ -1,4 +1,5 @@
 # modified by GliGli and Tiros for the reset glitch hack
+# updated by nitram for 14717 and 14719
 # Xenon Support released by Xecuter, Xenon SMC was provided by RF1911
 
 # you might need to fill in this
@@ -18,6 +19,11 @@ SMC = None
 CB_A = None
 CB_A_crypted = None
 CB_B = None
+EXT_CB_A = None
+EXT_CB_A_crypted = None
+EXT_CB_B = None
+paintextCB_B = None
+console = None
 CD = None
 CD_plain = None
 CE = None
@@ -29,7 +35,7 @@ Exploit = None
 #if secret_1BL is None:
 #	secret_1BL = open("key_1BL.bin", "rb").read()
 
- # Import Psyco if available
+# Import Psyco if available
 try:
 	import psyco
 	psyco.full()
@@ -71,8 +77,12 @@ def unpack_base_image(image):
 		block_size += 0xF
 		block_size &= ~0xF
 		id = ord(block_id[1]) & 0xF
-
-		print "Found %dBL (build %d) at %08x" % (id, block_build, block_offset)
+		CBType = "A"
+		if block_id == "CB":
+			if block_size == 31280:
+				CBType = "B"
+			block_id = block_id + "_" + CBType
+		print "Found %dBL %s (build %d) at %08x" % (id, block_id, block_build, block_offset)
 		data = image[block_offset:block_offset+block_size]
 		
 		if id == 2:
@@ -104,7 +114,7 @@ def unpack_update(image):
 		block_size += 0xF
 		block_size &= ~0xF
 		id = ord(block_id[1]) & 0xF
-
+		
 		print "Found %dBL (build %d) at %08x" % (id, block_build, block_offset)
 		data = image[block_offset:block_offset+block_size]
 		
@@ -122,8 +132,10 @@ def build(data):
 	return struct.unpack(">H", data[2:4])[0]
 
 def decrypt_CB(CB):
+	global CB_A_key
 	secret = secret_1BL
 	key = hmac.new(secret, CB[0x10:0x20], sha).digest()[0:0x10]
+	CB_A_key = CB[0x10:0x20]
 	CB = CB[0:0x10] + key + RC4.new(key).decrypt(CB[0x20:])
 	return CB
 
@@ -138,7 +150,7 @@ def decrypt_CB_Cpu(CB):
 	return CB
 
 def decrypt_CD(CD, CB):
-# enable this code if you want to extract CD from a flash image and you know the cup key.
+# enable this code if you want to extract CD from a flash image and you know the cpu key.
 # disable this when this is a zero-paired image.
 #	assert cpukey or build(CD) < 1920
 	secret = CB[0x10:0x20]
@@ -228,20 +240,68 @@ def encrypt_SMC(SMC):
 		key[(i+1)&3] += mod
 		key[(i+2)&3] += mod >> 8
 	return res
-
-# CB_patches is an array of patchsets, a patchset is a version number followed by an array of patches, a patch is 3 ints: [offset,plaintext,patch]
-
-CB_patches = [[9188,[[0x4f08,0x409a0010,0x60000000],[0x5618,0x480018e1,0x60000000],[0x5678,0x480000b9,0x60000000]]]]
-
+	
 def int_to_str(i):
 	return [chr((i>>24) & 0xff),chr((i>>16) & 0xff),chr((i>>8) & 0xff),chr(i & 0xff)]
+	
+def check_EXT_CB(CB):
+	global EXT_CB_A, EXT_CB_B, EXT_CB_A_crypted, paintextCB_B
+	
+	CBS = [[0x3661a9d6,"CB_A build (9188)","CB_A"],[0xb7cfc17c,"CB_B build (9188)","CB_B"],[0xc2c95118,"CB_B build (9230)","paintextCB_B"]]
 
+	cb_crc = binascii.crc32(CB) & 0xffffffff
+	found = False
+	
+	(block_id, block_build, block_flags, block_entry_point, block_size) = struct.unpack("!2sHLLL", CB[0:0x10])
+	for i in CBS:
+		if cb_crc == i[0]:
+			print "Found external 2Bl %s (decrypted)" % i[1]
+			print "CRC32: %x, matches, %s" % (cb_crc,i[1])
+			found = True
+			if i[2] == "CB_A":
+				print " * Encrypting external CB_A (%d) with CB_A (%d) key..." % (build(CB),build(CB_A)),
+				EXT_CB_A_crypted, key = encrypt_CB(CB,CB_A[0x10:0x20])
+				print "done!"
+				EXT_CB_A = CB
+			if i[2] == "CB_B":
+				EXT_CB_B = CB
+			if i[2] == "paintextCB_B":
+				paintextCB_B = CB
+	assert found, "Unknown CB hint 'cba_9188.bin,cbb_9188.bin,cbb_9230.bin'"
+	return
+
+def recrypt(paintext, crypted, paintextpatch):
+	data = ""
+	print " * Encrypting CB_B (%d) with CB_B (%d) keystream..." % (build(paintextpatch), build(crypted)),
+	for b in range(len(paintextpatch[0x20:])):
+		keystream = ord(paintext[0x20:][b]) ^ ord(crypted[0x20:][b])
+		data = data + chr(keystream ^ ord(paintextpatch[0x20:][b]))
+	print "done!"
+	return paintextpatch[0:0x10] + crypted[0x10:0x20] + data
+
+#CB_patches is an array of patchsets, a patchset is a version number followed by an array of patches, a patch is 3 ints: [offset,plaintext,patch]
+
+CB_patches = [[9188,[[0x4f08,0x409a0010,0x60000000],[0x5618,0x480018e1,0x60000000],[0x5678,0x480000b9,0x60000000],[0x4d10,0x7beb0620,0x48000168]]]]
+
+def patch_DecCB(CB):
+	for versions in CB_patches:
+		print " * patchset for %d found, %d patch(es), patching..." % (versions[0],len(versions[1])),
+		for patches in versions[1]:
+			patch = int_to_str(patches[2])
+			patched = ""
+			for i in range(4):
+					patched = patched + patch[i]
+			CB = CB[:patches[0]] + patched + CB[patches[0]+4:]
+	print "done!"
+	return CB
+	
 def patch_CB(CB):
 	found = False
 
 	for versions in CB_patches:
 		if build(CB) == versions[0]:
-			print "patchset for %d found, %d patch(es)" % (versions[0],len(versions[1]))
+			print " * patchset for %d found, %d patch(es), patching..." % (versions[0],len(versions[1])),
+		
 			found  = True
 			for patches in versions[1]:
 				plain = int_to_str(patches[1])
@@ -252,31 +312,32 @@ def patch_CB(CB):
 				for i in range(4):
 					keystream = ord(plain[i]) ^ ord(CB[i+patches[0]])
 					patched = patched + chr(keystream ^ ord(patch[i]))
-
 				CB = CB[:patches[0]] + patched + CB[patches[0]+4:]
-
+			print "done!"
 	assert found,"can't patch that CB"
 
 	return CB
-
+	
 # SMC_patches is an array of patchsets, a patchset is a crc32 of the image minus first 4 bytes, human readable version info and an array of patches, a patch is: [offset,byte0,byte1,...]
 # Dynamic SMC patching by [cOz]
 
 console_types = ["none/unk","Xenon","Zephyr","Falcon","Jasper","Trinity","Corona","Winchester"]
 
 def patch_SMC(SMC):
+	global console
 	found = False
 	smctyp = (ord(SMC[0x100])>>4)&0xF;
 	for bytes in range((len(SMC)-8)):
 		if ord(SMC[bytes]) == 0x05:
 			if ((ord(SMC[bytes+2]))==0xE5) and ((ord(SMC[bytes+4]))==0xb4) and ((ord(SMC[bytes+5]))==0x05):
 				found = True
-				print "Patching %s version %d.%d SMC at offset 0x%x" % (console_types[smctyp], ord(SMC[0x101]), ord(SMC[0x102]), bytes)
+				print " * patching %s version %d.%d SMC at offset 0x%x..." % (console_types[smctyp], ord(SMC[0x101]), ord(SMC[0x102]), bytes),
 				SMC = SMC[:bytes] + chr(0x0) + chr(0x0) + SMC[bytes+2:]
-	if not found:
-		print " ! Warning: can't patch this %s type SMC!" % (console_types[smctyp])
+				print "done!"
+				if not found:
+					print " ! Warning: can't patch this %s type SMC!" % (console_types[smctyp])
+	console = console_types[smctyp]
 	return SMC
-
 
 def allzero(string):
 	for x in string:
@@ -301,7 +362,6 @@ def calcecc(data):
 		if val & 1:
 			val ^= 0x6954559
 		val >>= 1
-
 	val = ~val
 	return data[:-4] + struct.pack("<L", (val << 6) & 0xFFFFFFFF)
 
@@ -327,9 +387,7 @@ for i in sys.argv[1:]:
 		CB_A_crypted = CB_A
 		SMC = decrypt_SMC(SMC)
 	elif image[:2] == "CB":
-		print " * found (hopefully) decrypted CB"
-		CB_A_crypted = None
-		CB_A = image
+		check_EXT_CB(image)
 	elif image[:2] == "CD" and allzero(image[0x20:0x230]):
 		print " * found decrypted CD"
 		CD_plain = image
@@ -352,6 +410,10 @@ print " * we found the following parts:"
 print "SMC: %d.%d" %(ord(SMC[0x101]),ord(SMC[0x102]))
 print "CB_A:", CB_A and build(CB_A) or "missing"
 print "CB_B:", CB_B and build(CB_B) or "missing"
+if CB_B and build(CB_B) != 9188:
+	print "EXT_CB_A:", EXT_CB_A and build(EXT_CB_A) or "missing"
+	print "EXT_CB_B (decrypted):", EXT_CB_B and build(EXT_CB_B) or "missing"
+	print "EXT_CB_B (decrypted):", paintextCB_B and build(paintextCB_B) or "missing"
 print "CD (image):", CD and build(CD) or "missing"
 print "CD (decrypted):", CD_plain and build(CD_plain) or "missing"
 
@@ -370,47 +432,48 @@ if CB_A_crypted:
 print " * checking if all files decrypted properly...",
 assert allzero(SMC[-4:])
 print "ok"
-
 print " * checking required versions...",
 assert CD_plain, "you need a decrypted CD"
 print "ok"
 
-xenon1_builds = [1923]
-xenon2_builds = [7375]
-zephyr_builds = [4578]
-falcon_builds = [5771]
-jasper_builds = [6750]
-trinity_builds = [9188]
-
-print " * this image will be valid *only* for:",
-if build(CB_A) in xenon1_builds: print "xenon",
-if build(CB_A) in xenon2_builds: print "xenon",
-if build(CB_A) in zephyr_builds: print "zephyr",
-if build(CB_A) in falcon_builds: print "falcon",
-if build(CB_A) in jasper_builds: print "jasper",
-if build(CB_A) in trinity_builds: print "trinity (slim)",
-print
+def check_CB_Build(CBbuild):
+	CB_Builds = [[1923],[7375],[4578],[5771],[6750],[9188],[9230]]
+	found = False
+	type = ""
+	for build in CB_Builds:
+		if CBbuild in build:
+			found = True
+	assert found, "Can't Glitch that CB"
+	return found
 
 Final = ""
 
 print " * patching SMC..."
+
 SMC=patch_SMC(SMC)
+
+print " * this image will be valid *only* for: %s" % console
 
 CD = CD_plain
 
 if CB_B:
 	print " * patching CB_B..."
-
-	CB_B = patch_CB(CB_B)
-
+	if check_CB_Build(build(CB_B)):
+		if build(CB_B) == 9188:
+			CB_B = patch_CB(CB_B)
+		if build(CB_B) == 9230:
+			print " * Using externel CB_B (%d)!" % build(EXT_CB_B)
+			open("output/Backup_CB_A_9230.bin", "wb").write(CB_A)
+			open("output/Backup_CB_B_9230.bin", "wb").write(CB_B)
+			CB_B = recrypt(paintextCB_B, CB_B, patch_DecCB(EXT_CB_B))
+			CB_A = EXT_CB_A
+			CB_A_crypted = EXT_CB_A_crypted
 	c = "patched CB img"
 else:
 	print " * zero-pairing..."
 
 	CB_A = CB_A[0:0x20] + "\0" * 0x20 + CB_A[0x40:]
-
 	c = "zeropair image"
-
 open("output/CB_A.bin", "wb").write(CB_A)
 if CB_B:
 	open("output/CB_B.bin", "wb").write(CB_B)
@@ -437,6 +500,7 @@ random = "\0" * 16
 SMC = encrypt_SMC(SMC)
 
 if not CB_B:
+	check_CB_Build(build(CB_A))
 	CB_A, CB_A_key = encrypt_CB(CB_A, random)
 	CD, CD_key = encrypt_CD(CD, CB_A_key, random)
 
