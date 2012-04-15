@@ -1,0 +1,3 @@
+[submodule "xflash"]
+	path = xflash
+	url = git://github.com/Juvenal1228/XFlash.git
