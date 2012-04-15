@@ -1,0 +1,50 @@
+Features:
+ * read/write/erase all size nands - 16mb, 64mb, 256mb, 512mb
+ * flash xsvf's to your CPLD (assuming your nandflasher supports that) - Nand-X
+ * power on/off the console (assuming your nandflasher supports that and is wired correctly)
+ * supports armV1 and armV3 flashers (where nandpro only supports armV3)
+
+Usage:
+
+  xflash [-h] {read,write,erase,xsvf,update,poweroff,poweron} ...
+
+  XBox 360 NAND Flasher
+
+  optional arguments:
+    -h, --help            show this help message and exit
+
+  Operations:
+    {read,write,erase,xsvf,update,poweroff,poweron}
+      read                Dumps an image from the NAND
+      write               Writes an image into the NAND
+      erase               Erases blocks in the NAND
+      xsvf                Flash a CPLD with an xsvf file
+      update              Jumps into the bootloader of the NAND Flashing device
+                          for updating the firmware
+      poweroff            Shuts down the attached XBox 360
+      poweron             Powers up the attached XBox 360
+
+
+detailed usage for each command can be had with
+xflash <command> --help
+
+Examples:
+# dump the full sized nand to 'nanddump.bin'
+$sudo xflash read nanddump.bin
+
+# write the full sized nand from 'nandflash.bin'
+$sudo xflash write nandflash.bin
+
+# dump the first 50 blocks worth of nand to shortdump.bin
+$sudo xflash read shortdump.bin 0 50
+
+# write the first 50 blocks of nand from image.ecc
+$sudo xflash write image.ecc 0 50
+
+Thanks / Credits:
+-Whoever wrote the original XFlash.py script
+-Anyone else involved the Free60 Project
+-The Makers of NandPro and the PIC Flashing code
+-G33KatWork (https://github.com/G33KatWork/XBox-360-AVR-flasher) - for his modifications to XFlash.py
+-Juvenal - current author of XFlash 1.3
+
