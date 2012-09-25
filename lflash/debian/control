@@ -1,0 +1,14 @@
+Source: lflash
+Section: unknown
+Priority: extra
+Maintainer: tuxuser <webmaster@libxenon.org>
+Build-Depends: debhelper (>= 7.0.50~)
+Standards-Version: 3.8.4
+Homepage: http://free60.org
+#Vcs-Git: git://github.com/Free60Project/tools.git
+#Vcs-Browser: https://github.com/Free60Project/tools/tree/master/lflash
+
+Package: lflash
+Architecture: powerpc
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: lflash is a linux-based nand flasher for xbox 360.
